@@ -1,3 +1,6 @@
+#ifndef COROUTINE_H
+#define COROUTINE_H
+
 #include <ucontext.h>
 #include <functional>
 
@@ -19,3 +22,5 @@ private:
     // 参考其他项目的协程实现，cb 的调用特征标都是 void() 暂时不懂为什么
     std::function<void()> m_cb;
 };
+
+#endif

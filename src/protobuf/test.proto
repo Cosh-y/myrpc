@@ -1,0 +1,25 @@
+syntax="proto3";
+
+package test;
+
+option cc_generic_services=true;
+
+message EchoRequest {
+    uint32 id = 1;
+    string content = 2;
+}
+
+message EchoResponse {
+    uint32 id = 1;
+    string content = 2;
+}
+
+message RpcHeader {
+    string service = 1;
+    string method = 2;
+    uint32 pkg_size = 3;
+}
+
+service EchoService {
+    rpc Echo(EchoRequest) returns (EchoResponse);
+}
