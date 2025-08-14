@@ -10,6 +10,13 @@
 #include "provider.h"
 #include "scheduler.h"
 
+// utils function
+static void set_nonblocking(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1) exit(EXIT_FAILURE);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+}
+
 // 不要在头文件中定义这种变量，在这里定义比较合理
 static thread_local scheduler *t_scheduler = nullptr;
 
@@ -48,7 +55,7 @@ void scheduler::run() {
         std::cerr << "Failed to listen on socket" << std::endl;
         exit(EXIT_FAILURE);
     }
-    fcntl(sock, F_SETFL, O_NONBLOCK); // 将 sock 设置为非阻塞，使 accept() 不会阻塞
+    set_nonblocking(sock); // 将 sock 设置为非阻塞，使 accept() 不会阻塞
 
     int epfd = epoll_create1(0);
     if (epfd == -1)
@@ -85,7 +92,7 @@ void scheduler::run() {
                     std::cerr << "Failed to accept connection" << std::endl;
                     continue;
                 }
-                fcntl(client_sock, F_SETFL, O_NONBLOCK); // 将 client_sock 设置为非阻塞
+                set_nonblocking(client_sock); // 将 client_sock 设置为非阻塞
                 coroutine *co = new coroutine([client_sock]() {
                     scheduler::get_this()->m_prov.run(client_sock);
                 });
