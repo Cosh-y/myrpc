@@ -7,12 +7,16 @@
 
 class provider {
 public:
-    provider();
+    static provider& instance() {   // 单例模式
+        static provider inst;
+        return inst;
+    }
 
     // 注册服务
     void register_service(const std::string& service_name, google::protobuf::Service* service) {
         m_services[service_name] = service;
     }
+
     google::protobuf::Service* get_service(const std::string& service_name) {
         auto it = m_services.find(service_name);
         if (it != m_services.end()) {
@@ -21,9 +25,8 @@ public:
         return nullptr;
     }
 
-    void run(int sock);
-
 private:
+    provider();
     std::map<std::string, google::protobuf::Service*> m_services;
 };
 

@@ -11,6 +11,8 @@
 // 这里定义的 io 函数指针类型的变量，指向原始 io 函数地址，后续用于传入 hook_io 中
 original_read_t original_read = (original_read_t)dlsym(RTLD_NEXT, "read");
 original_write_t original_write = (original_write_t)dlsym(RTLD_NEXT, "write");
+original_recv_t original_recv = (original_recv_t)dlsym(RTLD_NEXT, "recv");
+original_send_t original_send = (original_send_t)dlsym(RTLD_NEXT, "send");
 
 bool is_socket(int fd) {
     struct stat st;
@@ -20,21 +22,28 @@ bool is_socket(int fd) {
     return S_ISSOCK(st.st_mode);
 }
 
-template<typename F, typename... Args>
+template<typename F, typename... Args>  // 可变参数模板，Args 模板参数包，args 函数参数包
 int hook_io(int fd, event ev, F origin_io, Args&&... args) {
     // 如果 fd 是 sock，查看其 io 操作是否能立即完成
     if (is_socket(fd)) {
     retry:
         int r = origin_io(fd, std::forward<Args>(args)...);
-        coroutine& co = coroutine::get_current();
-        scheduler *sc = scheduler::get_this();
-        if (-1 == r) {
-            // 如果 io 操作无法立即完成，注册 event，yield 协程，retry
-            sc->add_event(fd, ev);
-            co.yield();
-            goto retry;
+        coroutine *co = coroutine::get_current();
+        // scheduler *sc = scheduler::get_this();
+        if (r < 0) {
+            if (errno == EAGAIN) { // hook 里判断“榨干”与否，连接里只需要判断读完 size 与否
+                // 如果 io 操作无法立即完成，注册 event 是一种设计，但目前不采用这种设计
+                // sc->add_event(fd, ev);
+                // 该协程绑定的连接的 sock 上的 event 在创建连接时被注册
+                // TODO：关于销毁连接；可能的其他 event？
+                co->yield();
+                goto retry;
+            } else {
+                perror("hook_io");
+                exit(EXIT_FAILURE);
+            }
         } else {
-            sc->del_event(fd);
+            // sc->del_event(fd);
             return r;
         }
     } else {
@@ -49,4 +58,12 @@ ssize_t read(int fd, void *buf, size_t count) {
 
 ssize_t write(int fd, const void *buf, size_t count) {
     return hook_io(fd, event::WRITE, original_write, buf, count);
+}
+
+ssize_t recv(int fd, void *buf, size_t len, int flags) {
+    return hook_io(fd, event::READ, original_recv, buf, len, flags);
+}
+
+ssize_t send(int fd, const void *buf, size_t len, int flags) {
+    return hook_io(fd, event::WRITE, original_send, buf, len, flags);
 }

@@ -1,7 +1,6 @@
 #include "scheduler.h"
 
 int main() {
-    provider prov;
-    scheduler sched(prov);
+    scheduler sched;
     sched.run();
 }

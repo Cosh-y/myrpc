@@ -106,10 +106,10 @@ void print_retval(const std::string & val_str) {
 }
 
 int main(int argc, char **args) {
-    std::string ip = (argc > 1) ? args[1] : "127.0.0.1";
+    std::string ip = (argc > 1) ? args[1] : "192.168.106.205";
     uint16_t port  = (argc > 2) ? (std::stoi(args[2])) : 8080;  // 字符串转整数 stoi
-    uint32_t n_conns = (argc > 3) ? std::stoi(args[3]) : 1;
-    uint32_t n_reqs  = (argc > 4) ? std::stoi(args[4]) : 3;
+    uint32_t n_conns = (argc > 3) ? std::stoi(args[3]) : 3;
+    uint32_t n_reqs  = (argc > 4) ? std::stoi(args[4]) : 10;
 
     std::vector<conn> conns;
     conns.reserve(1024);
@@ -136,8 +136,8 @@ int main(int argc, char **args) {
     std::vector<epoll_event> events(1024);
 
     auto t0 = std::chrono::steady_clock::now();
-    
-    while (n_send < n_reqs) {
+    bool over = false;
+    while (!over) {
         std::cout << "epoll waiting!" << "\n";
         int n = epoll_wait(epfd, events.data(), 1024, 5000);
         std::cout << "gets events: " << n << "\n";
@@ -250,6 +250,15 @@ int main(int argc, char **args) {
                     } else {
                         continue;
                     }
+                }
+            }
+
+            if (c.state_ == state::CLOSED) {
+                std::cout << "Connection closed for conn id: " << c.id << "\n";
+                close(c.fd_sock);
+                c.fd_sock = -1;
+                if (n_send >= n_reqs) {
+                    over = true;
                 }
             }
         }
