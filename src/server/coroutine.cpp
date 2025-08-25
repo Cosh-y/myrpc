@@ -4,7 +4,7 @@
 static thread_local coroutine *t_cur_coroutine;
 static thread_local ucontext_t t_main_ctx;
 
-coroutine::coroutine() {
+coroutine::coroutine(int id) : m_id(id) {
     m_stack_size = 1024 * 1024;
     m_stack_ptr = new char[m_stack_size];
     getcontext(&m_ctx);
@@ -18,7 +18,10 @@ coroutine::coroutine(coroutine && co) {
     m_stack_ptr = co.m_stack_ptr;
     co.m_stack_ptr = nullptr;
     m_conn = co.m_conn;
+    co.m_conn = nullptr;
     m_ctx = co.m_ctx;
+    m_id = co.m_id;
+    m_cb = co.m_cb; // 这 function 该理解成指针还是啥？
 }
 
 coroutine* coroutine::get_current() {
@@ -47,13 +50,13 @@ coroutine::coroutine(std::function<void()> cb) : m_cb(std::move(cb)) {
     makecontext(&m_ctx, &coroutine::coroutine_main, 0);
 }
 
-void coroutine::set_connection(connection && conn) {
-    m_conn = std::move(conn);
-    m_cb = std::bind(&connection::run, &m_conn);
+void coroutine::set_connection(connection & conn) {
+    m_conn = &conn;
+    m_cb = std::bind(&connection::run, m_conn);
 }
 
 int coroutine::get_connection_id() {
-    return m_conn.id();
+    return m_conn->id();
 }
 
 void coroutine::coroutine_main() {

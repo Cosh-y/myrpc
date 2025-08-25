@@ -32,13 +32,19 @@ int hook_io(int fd, event ev, F origin_io, Args&&... args) {
         // scheduler *sc = scheduler::get_this();
         if (r < 0) {
             if (errno == EAGAIN) { // hook 里判断“榨干”与否，连接里只需要判断读完 size 与否
-                // 如果 io 操作无法立即完成，注册 event 是一种设计，但目前不采用这种设计
-                // sc->add_event(fd, ev);
-                // 该协程绑定的连接的 sock 上的 event 在创建连接时被注册
+                // “如果 io 操作无法立即完成就注册 event” 是一种设计，但目前不采用这种设计
+                // 比如不会在这里 sc->add_event(fd, ev);
+                // 实际上，该协程绑定的连接的 sock 上的 event 会在创建连接时被注册
                 // TODO：关于销毁连接；可能的其他 event？
                 co->yield();
                 goto retry;
+            } else if (errno == ECONNRESET) { // 说明对端已经关闭连接了，而且这种关闭是比较粗暴，和返回值为 0 表示的那种不一样
+                // TODO：这种异常需要更好的处理或者避免吗？
+                std::cout << "errno: " << errno << "\n";
+                co->yield();
+                exit(EXIT_FAILURE);
             } else {
+                std::cout << "errno: " << errno << "\n";
                 perror("hook_io");
                 exit(EXIT_FAILURE);
             }

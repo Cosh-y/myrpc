@@ -13,7 +13,7 @@
 
 #include "test.pb.h"
 
-static bool debug = false;
+static bool debug = true;
 
 // utils function
 static void set_nonblocking(int fd) {
@@ -51,28 +51,38 @@ scheduler::scheduler() {
         std::cerr << "Failed to create epoll file descriptor" << std::endl;
         exit(EXIT_FAILURE);
     }
+
+    // 默认构造 m_timer;
+
     init_cort_pool();
     set_this(this);  // 设置当前调度器实例
 }
 
 void scheduler::init_cort_pool() {
     for (uint32_t i = 0;i < m_cort_pool_size;i++) {
-        m_cort_pool.emplace_back(std::make_pair(true, coroutine()));
+        // coroutine(i) 返回一个临时对象，后续可能会触发移动语义
+        m_cort_pool.emplace_back(true, coroutine(i));
     }
 }
 
-std::pair<int, coroutine &> scheduler::alloc_cort() {
+coroutine & scheduler::alloc_cort() {
     for (uint32_t i = 0;i < m_cort_pool.size();i++) {
         if (m_cort_pool[i].first == true) {
             m_cort_pool[i].first = false;
             if (debug) {
                 std::cout << "alloc cort " << i << "\n";
             }
-            return std::pair<int, coroutine &>(i, m_cort_pool[i].second);
+            return m_cort_pool[i].second;
         }
     }
     std::cerr << "no free coroutine!";
     exit(EXIT_FAILURE);
+}
+
+void scheduler::return_cort(coroutine & co) {
+    int co_id = co.id();
+    assert(!m_cort_pool[co_id].first);
+    m_cort_pool[co_id].first = true; // 空闲
 }
 
 coroutine & scheduler::get_cort(int idx) {
@@ -107,10 +117,19 @@ void scheduler::run() {
     }
     set_nonblocking(sock); // 将 sock 设置为非阻塞，使 accept() 不会阻塞
 
-    struct epoll_event ev;
-    ev.events = EPOLLIN;
-    ev.data.fd = sock;
-    epoll_ctl(m_epfd, EPOLL_CTL_ADD, sock, &ev);
+    struct epoll_event accept_ev;
+    accept_ev.events = EPOLLIN;
+    struct event_data evd; 
+    evd.fd = sock;
+    accept_ev.data.ptr = &evd;
+    epoll_ctl(m_epfd, EPOLL_CTL_ADD, sock, &accept_ev);
+
+    struct epoll_event time_ev;
+    time_ev.events = EPOLLIN;
+    struct event_data time_evd; 
+    time_evd.fd = m_timer.get_fd();
+    time_ev.data.ptr = &time_evd;
+    epoll_ctl(m_epfd, EPOLL_CTL_ADD, m_timer.get_fd(), &time_ev);
 
     while (true) {
         struct epoll_event events[1024];
@@ -123,7 +142,8 @@ void scheduler::run() {
         }
 
         for (int i = 0; i < nfds; ++i) {
-            if (events[i].data.fd == sock) {
+            struct event_data *ev_data = (event_data *)events[i].data.ptr;
+            if (ev_data->fd == sock) {
                 // 有新的连接到来
                 std::cout << "New connection detected" << std::endl;
                 int client_sock = accept(sock, nullptr, nullptr);
@@ -133,28 +153,51 @@ void scheduler::run() {
                 }
                 set_nonblocking(client_sock); // 将 client_sock 设置为非阻塞
 
-                std::pair<int, coroutine &> idx_co = alloc_cort();
-                coroutine & co = idx_co.second;
+                coroutine & co = alloc_cort();
 
                 epoll_event ev;
-                ev.data.ptr = new event_data { client_sock, idx_co.first };
+                ev.data.ptr = new event_data { client_sock, co.id() }; // 潜在的内存泄漏
                 ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
                 epoll_ctl(m_epfd, EPOLL_CTL_ADD, client_sock, &ev);
 
-                connection conn(client_sock);
-                co.set_connection(std::move(conn));
+                connection & conn = add_client(client_sock);
+                fresh_in_time_wheel(conn);
+                co.set_connection(conn);
+                conn.set_coroutine(co);
                 co.resume();
+            } else if (ev_data->fd == m_timer.get_fd()) {
+                // 定时器到时
+                m_timer.on_time();
             } else {
                 // 处理已连接的客户端
-                event_data *ev_data = (event_data *)events[i].data.ptr;
                 coroutine & co = get_cort(ev_data->cort_idx);
                 if (debug) { 
-                    std::cout << "co idx: " << ev_data->cort_idx << "; co's conn's id: " << co.get_connection_id() << "\n";
+                    std::cout << "resumed co idx: " << ev_data->cort_idx << "; co's conn's id: " << co.get_connection_id() << "\n";
                 }
                 co.resume();
+                if (debug) {
+                    std::cout << "resumed co yield, co idx: " << co.id() << "\n";
+                }
             }
         }
     }
+}
+
+// TODO: 使用 try_emplace 一次查找搞定
+connection & scheduler::add_client(int client_sock) {
+    auto it = m_conn_pool.find(client_sock);
+    if (it != m_conn_pool.end()) {
+        // 说明原来用于连接的某个 fd 被 close 了
+        it->second.reset_with_sock(client_sock);
+        return it->second;
+    } else {
+        m_conn_pool.emplace(client_sock, connection(client_sock));
+        return m_conn_pool[client_sock];
+    }
+}
+
+void scheduler::fresh_in_time_wheel(connection & conn) {
+    m_timer.fresh(conn);
 }
 
 // void scheduler::add_event(int fd, event ev) {

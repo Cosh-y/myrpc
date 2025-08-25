@@ -1,8 +1,10 @@
 #include <sstream>
 
 #include "connection.h"
+#include "scheduler.h"
 #include "hook.h"
 #include "provider.h"
+
 #include "test.pb.h"
 
 static bool debug = false;
@@ -10,6 +12,7 @@ static bool debug = false;
 connection::connection(int fd_sock) : m_fd_sock(fd_sock) {
     static int id = 0;
     m_id = id++;
+    m_n_freshed = 0;
     m_state = state::RECV_SIZE;
 
     m_send_buf.reserve(1024);
@@ -20,6 +23,23 @@ connection::connection(int fd_sock) : m_fd_sock(fd_sock) {
     m_recv_off = 0;
     m_to_recv = sizeof(uint32_t);
     m_recv_buf.resize(m_to_recv);
+}
+
+void connection::reset_with_sock(int sock) {
+    assert(m_n_freshed == 0);
+    scheduler::get_this()->fresh_in_time_wheel(*this);
+    m_fd_sock = sock;
+    m_state = state::RECV_SIZE;
+    m_send_off = 0;
+    m_to_send = 0;
+    m_recv_off = 0;
+    m_to_recv = sizeof(uint32_t);
+    m_recv_buf.resize(m_to_recv);
+}
+
+void connection::timeout() {
+    shutdown(m_fd_sock, SHUT_RDWR);
+    scheduler::get_this()->return_cort(*m_cort);
 }
 
 void connection::run() {
@@ -33,8 +53,14 @@ void connection::run() {
         if (m_state == state::RECV_SIZE) {
             if (debug) std::cout << "s.state: RECV_SIZE" << "\n";
             while (m_recv_off < m_to_recv) {
+                // 错误处理 & 协程 yield 在 hook 中完成
                 int r = recv(m_fd_sock, m_recv_buf.data() + m_recv_off, m_to_recv - m_recv_off, 0);
-                m_recv_off += r; // 错误处理 & 协程 yield 在 hook 中完成
+                // 对端关闭连接。对端关闭连接不属于错误；recv 返回零一定意味着对端关闭连接，而非读操作会阻塞，后者属于错误，返回 EAGAIN。
+                if (r == 0) {
+                    // 资源回收操作等待时间轮处理
+                    m_cort->yield();
+                }
+                m_recv_off += r;
             }
             m_to_recv = *(uint32_t *)m_recv_buf.data();
             m_recv_off = 0;
@@ -46,6 +72,9 @@ void connection::run() {
             if (debug) std::cout << "s.state: RECV_HDR" << "\n";
             while (m_recv_off < m_to_recv) {
                 int r = recv(m_fd_sock, m_recv_buf.data() + m_recv_off, m_to_recv - m_recv_off, 0);
+                if (r == 0) {
+                    m_cort->yield();
+                }
                 m_recv_off += r;
             }
             header.ParseFromString(m_recv_buf);
@@ -64,6 +93,9 @@ void connection::run() {
             if (debug) std::cout << "s.state: RECV_BODY" << "\n";
             while (m_recv_off < m_to_recv) {
                 int r = recv(m_fd_sock, m_recv_buf.data() + m_recv_off, m_to_recv - m_recv_off, 0);
+                if (r == 0) {
+                    m_cort->yield();
+                }
                 m_recv_off += r;
             }
             req->ParseFromString(m_recv_buf);
@@ -91,6 +123,7 @@ void connection::run() {
             m_to_recv = sizeof(uint32_t);
             m_recv_off = 0;
             m_state = state::RECV_SIZE;
+            scheduler::get_this()->fresh_in_time_wheel(*this);
         }
     }
 }

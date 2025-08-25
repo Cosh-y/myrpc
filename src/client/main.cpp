@@ -203,7 +203,7 @@ int main(int argc, char **args) {
                     int r = recv(c.fd_sock, c.recv_buf.data() + c.recv_off, c.to_recv - c.recv_off, 0);
                     if (r < 0) {
                         if (errno == EAGAIN) {
-                            std::cout << "unreadable!1" << "\n";
+                            std::cout << "unreadable!1" << "\n"; // 有点傻的写法hh
                             break;
                         } else {
                             c.state_ = state::CLOSED;
