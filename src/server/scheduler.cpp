@@ -98,6 +98,8 @@ void scheduler::run() {
         std::cerr << "Failed to create socket" << std::endl;
         exit(EXIT_FAILURE);
     }
+    int optval = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
     
     int r;
     struct sockaddr_in addr;

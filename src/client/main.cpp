@@ -10,6 +10,8 @@
 
 #include "test.pb.h"
 
+static bool debug = false;
+
 enum class state {
     CONNECTING,
     IDLE,
@@ -109,7 +111,7 @@ int main(int argc, char **args) {
     std::string ip = (argc > 1) ? args[1] : "192.168.106.205";
     uint16_t port  = (argc > 2) ? (std::stoi(args[2])) : 8080;  // 字符串转整数 stoi
     uint32_t n_conns = (argc > 3) ? std::stoi(args[3]) : 10;
-    uint32_t n_reqs  = (argc > 4) ? std::stoi(args[4]) : 10000;
+    uint32_t n_reqs  = (argc > 4) ? std::stoi(args[4]) : 5000;
 
     std::vector<conn> conns;
     conns.reserve(1024);
@@ -140,7 +142,6 @@ int main(int argc, char **args) {
     while (!over) {
         std::cout << "epoll waiting!" << "\n";
         int n = epoll_wait(epfd, events.data(), 1024, 5000);
-        std::cout << "gets events: " << n << "\n";
         for (int i = 0;i < n;i++) {
             epoll_event & ev = events[i];
             int idx = ev.data.u32;
@@ -170,7 +171,9 @@ int main(int argc, char **args) {
                     int r = send(c.fd_sock, c.send_buf.data() + c.send_off, c.to_send - c.send_off, 0);
                     if (r < 0) {
                         if (errno == EAGAIN) {   // 判断是否写到了不可再写的地步
-                            std::cout << "unwriteable!" << "\n";
+                            if (debug) {
+                                std::cout << "unwriteable!\n";
+                            }
                             break;
                         } else {
                             c.state_ = state::CLOSED;
@@ -203,7 +206,9 @@ int main(int argc, char **args) {
                     int r = recv(c.fd_sock, c.recv_buf.data() + c.recv_off, c.to_recv - c.recv_off, 0);
                     if (r < 0) {
                         if (errno == EAGAIN) {
-                            std::cout << "unreadable!1" << "\n"; // 有点傻的写法hh
+                            if (debug) {
+                                std::cout << "unreadable!1\n";
+                            }
                             break;
                         } else {
                             c.state_ = state::CLOSED;
@@ -228,7 +233,9 @@ int main(int argc, char **args) {
                     int r = recv(c.fd_sock, c.recv_buf.data() + c.recv_off, c.to_recv - c.recv_off, 0);
                     if (r < 0) {
                         if (errno == EAGAIN) {
-                            std::cout << "unreadable!2" << "\n";
+                            if (debug) {
+                                std::cout << "unreadable!2\n";
+                            }
                             break;
                         } else {
                             c.state_ = state::CLOSED;
@@ -238,7 +245,7 @@ int main(int argc, char **args) {
                     c.recv_off += r;
                     if (c.recv_off == c.to_recv) {
                         n_recv++;
-                        print_retval(c.recv_buf);
+                        if (debug) print_retval(c.recv_buf);
                         if (n_send >= n_reqs) {
                             c.state_ = state::CLOSED;
                             break;
@@ -265,9 +272,7 @@ int main(int argc, char **args) {
     }
 
     auto t1 = std::chrono::steady_clock::now();
-    double sec = std::chrono::duration<double>(t1 - std::chrono::steady_clock::now() + (t1 - t1)).count(); // 防止优化警告
-    sec = std::chrono::duration<double>(t1 - std::chrono::steady_clock::now() + (t1 - t0)).count(); // 修正
-    sec = std::chrono::duration<double>(t1 - t0).count();
+    double sec = std::chrono::duration<double>(t1 - t0).count();
 
     // 清理
     for (auto& c : conns) {

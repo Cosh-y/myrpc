@@ -7,7 +7,7 @@
 #include "timer.h"
 #include "coroutine.h"
 
-static bool debug = true;
+static bool debug = false;
 
 time_wheel::time_wheel(int n_spokes, int update_cycle) : m_n_spokes(n_spokes), m_update_cycle(update_cycle) {
     for (int i = 0;i < m_n_spokes;i++) {
@@ -58,7 +58,6 @@ int timer::get_fd() {
 }
 
 void timer::on_time() {
-    std::cout << "in timer::on_time()\n";
     uint64_t exp;
     read(m_fd_timer, &exp, sizeof(exp)); // 必须读掉，从而重置计时器的可读状态。
     m_time_wheel.rotate();
