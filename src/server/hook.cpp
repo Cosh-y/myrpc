@@ -2,8 +2,11 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <dlfcn.h>
+#include <iostream>
+
 #include "hook.h"
 #include "scheduler.h"
+#include "coroutine.h"
 
 // 为原始的 read/write 函数创建别名，避免名称冲突
 // 采用 dlsym 在运行时获取动态链接库中的 io 函数地址

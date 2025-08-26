@@ -4,7 +4,8 @@
 #include <queue>
 #include <vector>
 #include <memory>
-#include "connection.h"
+
+class connection;
 
 class time_wheel {
 public:

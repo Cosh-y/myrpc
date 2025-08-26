@@ -6,8 +6,6 @@
 
 #include "connection.h"
 
-class connection;
-
 class coroutine {
 public:
     coroutine() = default;
@@ -15,6 +13,7 @@ public:
     coroutine(std::function<void()> cb);
     coroutine(coroutine && co);
     ~coroutine();
+    void reset_uctx();
     void set_connection(connection & conn);
     int get_connection_id();
     int id() const { return m_id; }

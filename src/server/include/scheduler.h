@@ -3,9 +3,10 @@
 
 #include <unistd.h>
 #include <memory>
-#include "provider.h"
-#include "coroutine.h"
+#include <map>
+
 #include "timer.h"
+#include "coroutine.h"
 
 enum class event {
     READ,
@@ -46,6 +47,7 @@ private:
     uint32_t m_cort_pool_size = 10;
     std::vector<std::pair<bool, coroutine>> m_cort_pool;
     std::map<int, connection> m_conn_pool;
+    struct event_data m_evds[2];
 };
 
 #endif

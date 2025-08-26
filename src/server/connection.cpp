@@ -1,6 +1,8 @@
 #include <sstream>
+#include <sys/epoll.h>
 
 #include "connection.h"
+#include "coroutine.h"
 #include "scheduler.h"
 #include "hook.h"
 #include "provider.h"
@@ -39,7 +41,13 @@ void connection::reset_with_sock(int sock) {
 
 void connection::timeout() {
     shutdown(m_fd_sock, SHUT_RDWR);
+    close(m_fd_sock);
+    delete m_evd_ptr;
     scheduler::get_this()->return_cort(*m_cort);
+}
+
+void connection::set_evd_ptr(struct event_data *ptr) {
+    m_evd_ptr = ptr;
 }
 
 void connection::run() {

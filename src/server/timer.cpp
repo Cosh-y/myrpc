@@ -26,18 +26,26 @@ void time_wheel::rotate() {
     std::vector<connection *> tmp = m_wheel.front();
     m_wheel.pop();
     m_wheel.push(std::vector<connection *>());
+    if (debug) {
+        if (!tmp.empty()) {
+            std::cout << "not empty spoke:\n";
+        } else {
+            std::cout << "empty spoke\n";
+        }
+    }
     for (connection * conn : tmp) {
+        conn->outdate();
         if (!conn->freshed()) {
             if (debug) {
-                std::cout << "conn " << conn->id() << "timeout\n";
-                std::cout << "cort " << conn->get_coroutine()->id() << "returned\n";
+                std::cout << "conn " << conn->id() << " timeout\n";
+                std::cout << "cort " << conn->get_coroutine()->id() << " returned\n";
             }
             conn->timeout();
         }
     }
 }
 
-timer::timer() : m_time_wheel(10, 10) {
+timer::timer() : m_time_wheel(2, 10) {
     m_fd_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
     struct itimerspec timer_set;
     timer_set.it_value.tv_sec = 1;
@@ -50,6 +58,7 @@ int timer::get_fd() {
 }
 
 void timer::on_time() {
+    std::cout << "in timer::on_time()\n";
     uint64_t exp;
     read(m_fd_timer, &exp, sizeof(exp)); // 必须读掉，从而重置计时器的可读状态。
     m_time_wheel.rotate();

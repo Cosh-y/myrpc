@@ -82,6 +82,8 @@ coroutine & scheduler::alloc_cort() {
 void scheduler::return_cort(coroutine & co) {
     int co_id = co.id();
     assert(!m_cort_pool[co_id].first);
+
+    co.reset_uctx();
     m_cort_pool[co_id].first = true; // 空闲
 }
 
@@ -118,17 +120,15 @@ void scheduler::run() {
     set_nonblocking(sock); // 将 sock 设置为非阻塞，使 accept() 不会阻塞
 
     struct epoll_event accept_ev;
-    accept_ev.events = EPOLLIN;
-    struct event_data evd; 
-    evd.fd = sock;
-    accept_ev.data.ptr = &evd;
+    accept_ev.events = EPOLLIN; 
+    m_evds[0].fd = sock;
+    accept_ev.data.ptr = &m_evds[0];
     epoll_ctl(m_epfd, EPOLL_CTL_ADD, sock, &accept_ev);
 
     struct epoll_event time_ev;
-    time_ev.events = EPOLLIN;
-    struct event_data time_evd; 
-    time_evd.fd = m_timer.get_fd();
-    time_ev.data.ptr = &time_evd;
+    time_ev.events = EPOLLIN; 
+    m_evds[1].fd = m_timer.get_fd();
+    time_ev.data.ptr = &m_evds[1];
     epoll_ctl(m_epfd, EPOLL_CTL_ADD, m_timer.get_fd(), &time_ev);
 
     while (true) {
@@ -156,7 +156,8 @@ void scheduler::run() {
                 coroutine & co = alloc_cort();
 
                 epoll_event ev;
-                ev.data.ptr = new event_data { client_sock, co.id() }; // 潜在的内存泄漏
+                // 这段 堆内存 传入 conn，与 conn 一同管理一同释放，是否需要智能指针？
+                ev.data.ptr = new event_data { client_sock, co.id() };
                 ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
                 epoll_ctl(m_epfd, EPOLL_CTL_ADD, client_sock, &ev);
 
@@ -164,6 +165,7 @@ void scheduler::run() {
                 fresh_in_time_wheel(conn);
                 co.set_connection(conn);
                 conn.set_coroutine(co);
+                conn.set_evd_ptr((struct event_data *) ev.data.ptr);
                 co.resume();
             } else if (ev_data->fd == m_timer.get_fd()) {
                 // 定时器到时

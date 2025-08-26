@@ -17,7 +17,10 @@ public:
     bool freshable() { return m_n_freshed < 2; }
     bool freshed() { return m_n_freshed > 0; }
     void fresh() { m_n_freshed++; }
+    void outdate() { m_n_freshed--; }
+    int get_n_freshed() { return m_n_freshed; }
     void timeout();
+    void set_evd_ptr(struct event_data *ptr);
     
 private:
     enum class state {
@@ -50,6 +53,7 @@ private:
     // 这里我原本使用的是引用，其实应该使用指针。这里想表达的其实是一个临时的绑定关系，conn 和 cort 的绑定是可以改变的
     // 但引用一旦被赋值，就具有了永久的绑定关系，后续的赋值不再改变绑定关系，而是改变被引用的变量的值。
     coroutine * m_cort;
+    struct event_data * m_evd_ptr;
 };
 
 #endif // CONNECTION_H

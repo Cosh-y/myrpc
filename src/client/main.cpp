@@ -108,8 +108,8 @@ void print_retval(const std::string & val_str) {
 int main(int argc, char **args) {
     std::string ip = (argc > 1) ? args[1] : "192.168.106.205";
     uint16_t port  = (argc > 2) ? (std::stoi(args[2])) : 8080;  // 字符串转整数 stoi
-    uint32_t n_conns = (argc > 3) ? std::stoi(args[3]) : 3;
-    uint32_t n_reqs  = (argc > 4) ? std::stoi(args[4]) : 10;
+    uint32_t n_conns = (argc > 3) ? std::stoi(args[3]) : 10;
+    uint32_t n_reqs  = (argc > 4) ? std::stoi(args[4]) : 1000;
 
     std::vector<conn> conns;
     conns.reserve(1024);

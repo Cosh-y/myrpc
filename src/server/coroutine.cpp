@@ -50,6 +50,12 @@ coroutine::coroutine(std::function<void()> cb) : m_cb(std::move(cb)) {
     makecontext(&m_ctx, &coroutine::coroutine_main, 0);
 }
 
+void coroutine::reset_uctx() {
+    m_ctx.uc_stack.ss_sp = m_stack_ptr;
+    m_ctx.uc_stack.ss_size = m_stack_size;
+    makecontext(&m_ctx, &coroutine::coroutine_main, 0);
+}
+
 void coroutine::set_connection(connection & conn) {
     m_conn = &conn;
     m_cb = std::bind(&connection::run, m_conn);
