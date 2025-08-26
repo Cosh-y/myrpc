@@ -81,7 +81,7 @@ void prepare_conn(conn & c, int c_id) {
     
     test::EchoRequest req;
     req.set_id(c_id);
-    req.set_content("Hello, RPC " + std::to_string(c.count++));
+    req.set_content("Hello, RPC; req " + std::to_string(c.count++));
     std::string req_str = req.SerializeAsString();
     
     test::RpcHeader header;
@@ -102,14 +102,14 @@ void print_retval(const std::string & val_str) {
     test::EchoResponse resp;
     resp.ParseFromString(val_str);
     std::cout << "val_str: " << val_str << "\n";
-    std::cout << "resp id: " << resp.id() << "; resp.content: " << resp.content() << std::endl;
+    std::cout << "resp id (conn id): " << resp.id() << "; resp.content: " << resp.content() << std::endl;
 }
 
 int main(int argc, char **args) {
     std::string ip = (argc > 1) ? args[1] : "192.168.106.205";
     uint16_t port  = (argc > 2) ? (std::stoi(args[2])) : 8080;  // 字符串转整数 stoi
     uint32_t n_conns = (argc > 3) ? std::stoi(args[3]) : 10;
-    uint32_t n_reqs  = (argc > 4) ? std::stoi(args[4]) : 1000;
+    uint32_t n_reqs  = (argc > 4) ? std::stoi(args[4]) : 10000;
 
     std::vector<conn> conns;
     conns.reserve(1024);
