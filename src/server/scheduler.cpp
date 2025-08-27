@@ -6,10 +6,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <map>
+
 #include "coroutine.h"
 #include "connection.h"
 #include "provider.h"
 #include "scheduler.h"
+#include "worker.h"
 
 #include "test.pb.h"
 
@@ -92,6 +94,8 @@ coroutine & scheduler::get_cort(int idx) {
 }
 
 void scheduler::run() {
+    std::vector<worker> workers(4);
+
     int sock = socket(AF_INET, SOCK_STREAM, 0);  // tcp_socket
     if (sock == -1)
     {
