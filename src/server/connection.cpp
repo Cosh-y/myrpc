@@ -3,7 +3,7 @@
 
 #include "connection.h"
 #include "coroutine.h"
-#include "scheduler.h"
+#include "worker.h"
 #include "hook.h"
 #include "provider.h"
 
@@ -29,7 +29,7 @@ connection::connection(int fd_sock) : m_fd_sock(fd_sock) {
 
 void connection::reset_with_sock(int sock) {
     assert(m_n_freshed == 0);
-    scheduler::get_this()->fresh_in_time_wheel(*this);
+    worker::get_this()->fresh_in_time_wheel(*this);
     m_fd_sock = sock;
     m_state = state::RECV_SIZE;
     m_send_off = 0;
@@ -43,7 +43,7 @@ void connection::timeout() {
     shutdown(m_fd_sock, SHUT_RDWR);
     close(m_fd_sock);
     delete m_evd_ptr;
-    scheduler::get_this()->return_cort(*m_cort);
+    worker::get_this()->return_cort(*m_cort);
 }
 
 void connection::set_evd_ptr(struct event_data *ptr) {
@@ -131,7 +131,7 @@ void connection::run() {
             m_to_recv = sizeof(uint32_t);
             m_recv_off = 0;
             m_state = state::RECV_SIZE;
-            scheduler::get_this()->fresh_in_time_wheel(*this);
+            worker::get_this()->fresh_in_time_wheel(*this);
         }
     }
 }

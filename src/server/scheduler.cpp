@@ -15,8 +15,6 @@
 
 #include "test.pb.h"
 
-static bool debug = true;
-
 // utils function
 static void set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
@@ -54,47 +52,14 @@ scheduler::scheduler() {
         exit(EXIT_FAILURE);
     }
 
-    // 默认构造 m_timer;
-
-    init_cort_pool();
     set_this(this);  // 设置当前调度器实例
 }
 
-void scheduler::init_cort_pool() {
-    for (uint32_t i = 0;i < m_cort_pool_size;i++) {
-        // coroutine(i) 返回一个临时对象，后续可能会触发移动语义
-        m_cort_pool.emplace_back(true, coroutine(i));
-    }
-}
-
-coroutine & scheduler::alloc_cort() {
-    for (uint32_t i = 0;i < m_cort_pool.size();i++) {
-        if (m_cort_pool[i].first == true) {
-            m_cort_pool[i].first = false;
-            if (debug) {
-                std::cout << "alloc cort " << i << "\n";
-            }
-            return m_cort_pool[i].second;
-        }
-    }
-    std::cerr << "no free coroutine!";
-    exit(EXIT_FAILURE);
-}
-
-void scheduler::return_cort(coroutine & co) {
-    int co_id = co.id();
-    assert(!m_cort_pool[co_id].first);
-
-    co.reset_uctx();
-    m_cort_pool[co_id].first = true; // 空闲
-}
-
-coroutine & scheduler::get_cort(int idx) {
-    return m_cort_pool[idx].second;
-}
+static const int WORKERS_SIZE = 2;
 
 void scheduler::run() {
-    std::vector<worker> workers(4);
+    std::vector<worker> workers(WORKERS_SIZE);
+    int worker_idx = 0;
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);  // tcp_socket
     if (sock == -1)
@@ -131,16 +96,10 @@ void scheduler::run() {
     accept_ev.data.ptr = &m_evds[0];
     epoll_ctl(m_epfd, EPOLL_CTL_ADD, sock, &accept_ev);
 
-    struct epoll_event time_ev;
-    time_ev.events = EPOLLIN; 
-    m_evds[1].fd = m_timer.get_fd();
-    time_ev.data.ptr = &m_evds[1];
-    epoll_ctl(m_epfd, EPOLL_CTL_ADD, m_timer.get_fd(), &time_ev);
-
     while (true) {
         struct epoll_event events[1024];
         std::cout << "Waiting for events..." << std::endl;
-        int nfds = epoll_wait(m_epfd, events, 10, 5000); // 等待事件发生
+        int nfds = epoll_wait(m_epfd, events, 1024, 5000); // 等待事件发生
         if (nfds == -1)
         {
             std::cerr << "epoll_wait failed" << std::endl;
@@ -159,53 +118,13 @@ void scheduler::run() {
                 }
                 set_nonblocking(client_sock); // 将 client_sock 设置为非阻塞
 
-                coroutine & co = alloc_cort();
-
-                epoll_event ev;
-                // 这段 堆内存 传入 conn，与 conn 一同管理一同释放，是否需要智能指针？
-                ev.data.ptr = new event_data { client_sock, co.id() };
-                ev.events = EPOLLIN | EPOLLOUT | EPOLLET;
-                epoll_ctl(m_epfd, EPOLL_CTL_ADD, client_sock, &ev);
-
-                connection & conn = add_client(client_sock);
-                fresh_in_time_wheel(conn);
-                co.set_connection(conn);
-                conn.set_coroutine(co);
-                conn.set_evd_ptr((struct event_data *) ev.data.ptr);
-                co.resume();
-            } else if (ev_data->fd == m_timer.get_fd()) {
-                // 定时器到时
-                m_timer.on_time();
+                workers[worker_idx++].add_client(client_sock);
+                worker_idx %= WORKERS_SIZE;
             } else {
-                // 处理已连接的客户端
-                coroutine & co = get_cort(ev_data->cort_idx);
-                if (debug) { 
-                    std::cout << "resumed co idx: " << ev_data->cort_idx << "; co's conn's id: " << co.get_connection_id() << "\n";
-                }
-                co.resume();
-                if (debug) {
-                    std::cout << "resumed co yield, co idx: " << co.id() << "\n";
-                }
+                std::cerr << "unknown fd event!\n";
             }
         }
     }
-}
-
-// TODO: 使用 try_emplace 一次查找搞定
-connection & scheduler::add_client(int client_sock) {
-    auto it = m_conn_pool.find(client_sock);
-    if (it != m_conn_pool.end()) {
-        // 说明原来用于连接的某个 fd 被 close 了
-        it->second.reset_with_sock(client_sock);
-        return it->second;
-    } else {
-        m_conn_pool.emplace(client_sock, connection(client_sock));
-        return m_conn_pool[client_sock];
-    }
-}
-
-void scheduler::fresh_in_time_wheel(connection & conn) {
-    m_timer.fresh(conn);
 }
 
 // void scheduler::add_event(int fd, event ev) {

@@ -7,7 +7,7 @@
 #include "timer.h"
 #include "coroutine.h"
 
-static bool debug = false;
+static bool debug = true;
 
 time_wheel::time_wheel(int n_spokes, int update_cycle) : m_n_spokes(n_spokes), m_update_cycle(update_cycle) {
     for (int i = 0;i < m_n_spokes;i++) {
@@ -47,10 +47,18 @@ void time_wheel::rotate() {
 
 timer::timer() : m_time_wheel(2, 10) {
     m_fd_timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+    if (m_fd_timer == -1) {
+        perror("timerfd_create");
+    }
     struct itimerspec timer_set;
     timer_set.it_value.tv_sec = 1;
-    timer_set.it_interval.tv_sec = 1;
-    timerfd_settime(m_fd_timer, 0, &timer_set, NULL);
+    timer_set.it_value.tv_nsec = 0;
+
+    timer_set.it_interval.tv_sec = 1;   // 多次触发，间隔时间
+    timer_set.it_interval.tv_nsec = 0;
+    if (timerfd_settime(m_fd_timer, 0, &timer_set, NULL) == -1) {
+        perror("timerfd_settime");
+    }
 }
 
 int timer::get_fd() {
@@ -59,7 +67,10 @@ int timer::get_fd() {
 
 void timer::on_time() {
     uint64_t exp;
-    read(m_fd_timer, &exp, sizeof(exp)); // 必须读掉，从而重置计时器的可读状态。
+    // 必须读掉，从而重置计时器的可读状态。
+    if (read(m_fd_timer, &exp, sizeof(exp)) < 0) {
+        std::cerr << "read timerfd errno: " << errno << "\n";
+    }
     m_time_wheel.rotate();
 }
 

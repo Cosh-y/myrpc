@@ -58,7 +58,7 @@ void coroutine::reset_uctx() {
 
 void coroutine::set_connection(connection & conn) {
     m_conn = &conn;
-    m_cb = std::bind(&connection::run, m_conn);
+    m_cb = std::bind(&connection::run, m_conn); // 成员函数指针的又一使用方式
 }
 
 int coroutine::get_connection_id() {
